@@ -22,7 +22,7 @@
 * As I'm a too beginer in setting these kind of environment, please point me to right direction if the contents are wrong
 
 ## Server system
-* CPU: Intel ... 2.4GHz 8-core
+* CPU: Intel Xeon E5-2640 V4 2.4GHz ~ 3.4GHz 10-core - 1ea
 * GPU: Titan X - 4 ea
 * RAM: 256GB
 * SSD: 1TB
@@ -42,18 +42,23 @@ $ sudo apt-get upgrade
 ```
 * Install graphics driver (There are many tutorials out there but I just enabled the driver like below)
   * System Settings -> Software & Updates -> Additional Drivers -> Select 'Using NVIDIA binary driver - version xxx.xx .....'
-  * I'm using the version 375.66
-  * reboot?
+  * I'm using the version 384.90
+  * **_reboot_**
   * My failure
     * I used **_display port_** cable at first and when ever I install the graphics driver with different kind of methods in the internet, all failed to show up the login screen. 
     * Screen outputs the error something like 'the system is running in low-graphics mode'
     * I finally managed to solve this problem by switching the cable to **_dvi_**. What an odd behaviour...
-* (Maybe) Additional nvidia related software 
+  * check if following command works
+    * `$ nvidia-smi`
+    * it will print something like following...
+    
+    ![][host-nvidia-smi]
+    
+* (No need for docker users) _(optional)_ Additional nvidia related software 
   * cuda 8.0
   * cudnn 5.1 or 6.0 related to cuda 8.0 (need to sign up for nvidia to download)
   * Maybe because cuda and cudnn is installed when setting up nvidia-docker?
 * _(optional)_ Setup the user accounts for users who will use this server
-* Install ssh `sudo apt-get install ssh`
 
 ### Docker
 #### Install docker
@@ -68,19 +73,23 @@ $ wget -P /tmp https://github.com/NVIDIA/nvidia-docker/releases/download/v1.0.1/
 $ sudo dpkg -i /tmp/nvidia-docker*.deb && rm /tmp/nvidia-docker*.deb
 
 # Test nvidia-smi
-# option 1. use latest tag if you haven't installed any cuda before
+# option 1. use latest tag to see if it works
 $ nvidia-docker run --rm nvidia/cuda nvidia-smi
 
-# option 2. use cuda version specific tag if you have installed cuda already ==> In my case cuda 8.0
+# option 2. use specific cuda version tag if option 1 is giving you a error...
 $ nvidia-docker run --rm nvidia/cuda:8.0 nvidia-smi
+
+# above command should show you nvidia-smi result screen
 ```
-~~put nvidia-smi result image here~~
   * Explanation
     * `nvidia-docker`: using nvidia-docker rather than docker to use fully functional nvidia gpu related support
     * `run`: start (run) conatiner
     * `--rm`: remove container after work is done
     * `nvidia/cuda:<tag>`: docker image ro run --> if doesn't exists than it will pull from [docker-hub](https://hub.docker.com/) (similar to github)
     * `nvidia-smi`: command to run when container starts
+    * output 
+    
+    ![][host-nvidia-smi]
 
 #### Download (pull) appropriate docker image & test 
   * Personally I prefer [floyhub docker images](https://github.com/floydhub/dockerfiles)
@@ -142,6 +151,8 @@ $ nvidia-docker run --rm nvidia/cuda:8.0 nvidia-smi
   ~~insert mapped port number result here~~
 
 #### Link with Pycharm (setup remote access - must be pycharm professional)
+  * Follow this [link](https://medium.com/@erikhallstrm/work-remotely-with-pycharm-tensorflow-and-ssh-c60564be862d#3830) to setup pycharm remote
+  * use password auth type instead
 
 
 ## Etc
@@ -190,4 +201,15 @@ $ nvidia-docker run --rm nvidia/cuda:8.0 nvidia-smi
 | 161, 162 | Simple Network Management Protocol (SNMP) | TCP and UDP |
 | 389 | Lightweight Directory Access Protocol | TCP and UDP |
 | 443 | HTTP with Secure Sockets Layer (SSL) | TCP and UDP |
+
+
+# References
+
+* https://docs.docker.com/get-started/
+* https://docs.docker.com/engine/installation/linux/docker-ce/ubuntu/
+* https://github.com/NVIDIA/nvidia-docker
+* https://medium.com/@erikhallstrm/work-remotely-with-pycharm-tensorflow-and-ssh-c60564be862d
+* https://github.com/floydhub/dockerfiles
+
+[host-nvidia-smi]: ./assets/host-nvidia-smi.PNG
 
