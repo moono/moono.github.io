@@ -8,31 +8,23 @@
 * Just want to run deep neural network
 * Done some coding with single gpu and wants to use multiple gpus now
 
-## Why I wrote this manual...
-* I'm one of the target reader
-* To wrap up what I've done so far to setup the server
-
-## In a Nutshell (You can skip this document if none of below is needed)
+## In a Nutshell
 * Buy a computer with multiple gpus(probably Nvidia GTX 1080 Ti or Titan X or higher)
-* Can setup docker environment
-* Can connect to server with Jupyter notebook or Pycharm professional(remote debugging)
-* Can run (control) specific gpu that I want
+* Setup docker environment
+* Connect to docker environment server Pycharm professional(remote debugging)
+* Run specific (i.e. gpu isolation) gpus that I want
 
 ## Before start
-* As I'm a too beginer in setting these kind of environment, please point me to right direction if the contents are wrong
+* As I'm a too beginer in setting these kind of environment, please point me to right direction if the following contents are wrong
 
 ## Server system
-* CPU: Intel Xeon E5-2640 V4 2.4GHz ~ 3.4GHz 10-core - 1ea
 * GPU: Titan X - 4 ea
-* RAM: 256GB
-* SSD: 1TB
-* HDD: 2TB
 
 ## Setting the server
 
 ### Prerequisites
-* This [link](https://medium.com/towards-data-science/build-and-setup-your-own-deep-learning-server-from-scratch-e771dacaa252) helps for beginners.
-* Install Ubuntu 14.04 LTS
+* This [guide][link-build-dl-system] helps build/setup simple deep learning computer.
+* Install Ubuntu 14.04 or 16.04 LTS
 * Setup software update download location to near you
   * System Settings -> Software & Updates -> Ubuntu Software -> Download from
 * Install software updates
@@ -52,26 +44,23 @@ $ sudo apt-get upgrade
     * `$ nvidia-smi`
     * it will print something like following...
     
-    ![][host-nvidia-smi]
+    ![][img-host-nvidia-smi]
     
 * (No need for docker users) _(optional)_ Additional nvidia related software 
   * cuda 8.0
   * cudnn 5.1 or 6.0 related to cuda 8.0 (need to sign up for nvidia to download)
-  * Maybe because cuda and cudnn is installed when setting up nvidia-docker?
 * _(optional)_ Setup the user accounts for users who will use this server
 
 ### Docker
+
 #### Install docker
-  * Follow the steps in [Install docker - Ubuntu](https://docs.docker.com/engine/installation/linux/docker-ce/ubuntu/)
-  * _(optional)_ Try docker tutorial at least [Part1 & Part2](https://docs.docker.com/get-started/) to know what docker is
+* Follow the steps in [Install docker - Ubuntu][link-docker-install]
+* _(optional)_ Try docker tutorial at least [Part1 & Part2][link-docker-tutorial] to know what docker is
 
 #### Install nvidia-docker
+* Follow this [guide][link-nvidia-docker-install]
+* After installing nvidia-docker, test with `nvidia-smi` inside that docker container
 ```bash
-# Install nvidia-docker and nvidia-docker-plugin
-# (replace version number with latest in release tab)
-$ wget -P /tmp https://github.com/NVIDIA/nvidia-docker/releases/download/v1.0.1/nvidia-docker_1.0.1-1_amd64.deb
-$ sudo dpkg -i /tmp/nvidia-docker*.deb && rm /tmp/nvidia-docker*.deb
-
 # Test nvidia-smi
 # option 1. use latest tag to see if it works
 $ nvidia-docker run --rm nvidia/cuda nvidia-smi
@@ -79,76 +68,73 @@ $ nvidia-docker run --rm nvidia/cuda nvidia-smi
 # option 2. use specific cuda version tag if option 1 is giving you a error...
 $ nvidia-docker run --rm nvidia/cuda:8.0 nvidia-smi
 
-# above command should show you nvidia-smi result screen
+# Explanation
+# `nvidia-docker`: using nvidia-docker rather than docker to use fully functional nvidia gpu related support
+# `run`: start (run) conatiner
+# `--rm`: remove container after work is done
+# `nvidia/cuda:<tag>`: docker image ro run --> if doesn't exists than it will pull from https://hub.docker.com/ (similar to github)
+# `nvidia-smi`: command to run when container starts
 ```
-  * Explanation
-    * `nvidia-docker`: using nvidia-docker rather than docker to use fully functional nvidia gpu related support
-    * `run`: start (run) conatiner
-    * `--rm`: remove container after work is done
-    * `nvidia/cuda:<tag>`: docker image ro run --> if doesn't exists than it will pull from [docker-hub](https://hub.docker.com/) (similar to github)
-    * `nvidia-smi`: command to run when container starts
-    * output 
-    
-    ![][host-nvidia-smi]
 
 #### Download (pull) appropriate docker image & test 
-  * Personally I prefer [floyhub docker images](https://github.com/floydhub/dockerfiles)
-    * example: [tensorflow 1.3.0 with gpu on python3.x](https://github.com/floydhub/dockerfiles/blob/master/dl/tensorflow/1.3.0/Dockerfile-py3.gpu_aws)
-      ```bash
-      # pull image
-      $ docker pull floydhub/tensorflow:1.3.0-gpu-py3_aws.12
+* Personally I prefer [floyhub docker images][link-floyhub-docker-images]
+  * example: [tensorflow 1.3.0 with gpu on python3.x](https://github.com/floydhub/dockerfiles/blob/master/dl/tensorflow/1.3.0/Dockerfile-py3.gpu_aws)
+    ```bash
+    # pull image
+    $ docker pull floydhub/tensorflow:1.3.0-gpu-py3_aws.12
       
-      # run with nvidia-docker, map port 8888 to 8888 because this image already installed jupyter notebook inside like(tensorflow/tensorflow)
-      $ nvidia-docker run -it -p 8888:8888 floydhub/tensorflow:1.3.0-gpu-py3_aws.12
-      ```
-  * try to connect to jupyter notebook as seen in terminal screen
-  * run something to check if working: i.e. `sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))`
+    # run with nvidia-docker, map port 8888 to 8888 because this image already installed jupyter notebook inside like(tensorflow/tensorflow)
+    $ nvidia-docker run -it -p 8888:8888 floydhub/tensorflow:1.3.0-gpu-py3_aws.12
+    ```
+* try to connect to jupyter notebook as seen in terminal screen
+* run something to check if working: i.e. `sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))`
 
-#### [Stack](https://docs.docker.com/engine/examples/running_ssh_service/) ssh into existing docker image so that we can access to it
-  * create a file named 'Dockerfile'
-  * type below in 'Dockerfile' and save
-    ```bash
-    # base image to start with
-    FROM floydhub/tensorflow:1.3.0-gpu-py3_aws.12
+#### Stack ssh into existing docker image so that we can access to it - [link][link-docker-ssh]
+* create empty folder anywhere you want and `cd` into that
+* create a file named 'Dockerfile'
+* type below in 'Dockerfile' and save
+```bash
+# base image to start with
+FROM floydhub/tensorflow:1.3.0-gpu-py3_aws.12
+  
+# install ssh related package & basic setup
+RUN apt-get update && apt-get install -y openssh-server
+RUN mkdir /var/run/sshd
     
-    # install ssh related package & basic setup
-    RUN apt-get update && apt-get install -y openssh-server
-    RUN mkdir /var/run/sshd
+# change the password (here is 'docker') to yours
+RUN echo 'root:docker' | chpasswd
+RUN sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
     
-    # change the password (here is 'docker') to yours
-    RUN echo 'root:docker' | chpasswd
-    RUN sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+# SSH login fix. Otherwise user is kicked off after login
+RUN sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
     
-    # SSH login fix. Otherwise user is kicked off after login
-    RUN sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
+# I have no idea what these does
+ENV NOTVISIBLE "in users profile"
+RUN echo "export VISIBLE=now" >> /etc/profile
     
-    # I have no idea what these does
-    ENV NOTVISIBLE "in users profile"
-    RUN echo "export VISIBLE=now" >> /etc/profile
+# ssh port is 22 so let it be exposed
+EXPOSE 22
     
-    # ssh port is 22 so let it be exposed
-    EXPOSE 22
+# run below command when container starts
+CMD ["/usr/sbin/sshd", "-D"]
+```
+* Now build, run & test the 'Dockerfile'
+```bash
+# build the above 'Dockerfile' as named 'my_awesome_tf'
+$ docker build -t my_awesome_tf .
     
-    # run below command when container starts
-    CMD ["/usr/sbin/sshd", "-D"]
-    ```
-  * Now build, run & test the 'Dockerfile'
-    ```bash
-    # build the above 'Dockerfile' as named 'my_awesome_tf'
-    $ docker build -t my_awesome_tf .
+# run built docker image 'my_awesome_tf' with nvidia-docker
+$ nvidia-docker run -d -P --name test_tf my_awesome_tf
     
-    # run built docker image 'my_awesome_tf' with nvidia-docker
-    $ nvidia-docker run -d -P --name test_tf my_awesome_tf
+# find out which port 22 is mapped to in real world
+$ docker port test_tf 22
+0.0.0.0:40234
+
+# connect to container with username 'root' via ssh (password is docker)
+$ ssh root@localhost -p 40234
     
-    # find out which port 22 is mapped to in real world
-    $ docker port test_tf 22
-    
-    # connect to container with username 'root' via ssh (password is docker)
-    $ ssh root@localhost -p 40234
-    
-    root@f38c87f2a42d:/#
-    ```
-  ~~insert mapped port number result here~~
+root@f38c87f2a42d:/#
+```
 
 #### Link with Pycharm (setup remote access - must be pycharm professional)
   * Follow this [link](https://medium.com/@erikhallstrm/work-remotely-with-pycharm-tensorflow-and-ssh-c60564be862d#3830) to setup pycharm remote
@@ -211,5 +197,12 @@ $ nvidia-docker run --rm nvidia/cuda:8.0 nvidia-smi
 * https://medium.com/@erikhallstrm/work-remotely-with-pycharm-tensorflow-and-ssh-c60564be862d
 * https://github.com/floydhub/dockerfiles
 
-[host-nvidia-smi]: ./assets/host-nvidia-smi.PNG
+[img-host-nvidia-smi]: ./assets/host-nvidia-smi.PNG
+[link-build-dl-system]: https://medium.com/towards-data-science/build-and-setup-your-own-deep-learning-server-from-scratch-e771dacaa252
+[link-docker-install]: https://docs.docker.com/engine/installation/linux/docker-ce/ubuntu/
+[link-docker-tutorial]: https://docs.docker.com/get-started/
+[link-nvidia-docker-install]: https://github.com/NVIDIA/nvidia-docker/wiki/Installation
+[link-docker-hub]: https://hub.docker.com/
+[link-floyhub-docker-images]: https://github.com/floydhub/dockerfiles
+[link-docker-ssh]: https://docs.docker.com/engine/examples/running_ssh_service/
 
