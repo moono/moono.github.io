@@ -28,7 +28,7 @@ class CapsNet(object):
         self.m_plus = 0.9
         self.m_minus = 1.0 - self.m_plus
         self.lmbd = 0.5
-        self.learning_rate = 0.0002
+        self.learning_rate = 0.001
 
         # we are handling MNIST dataset
         self.im_size = 28
@@ -49,25 +49,31 @@ class CapsNet(object):
         # digit caps layer: returns [batch_size, 10, 16]
         l3 = self.digit_caps_layer(l2, n_dim=16, n_classes=self.y_dim, n_routing=n_routing)
 
+        # compute length of the digit caps layer
+        epsilon = 1e-9
+        self.pred_label = tf.sqrt(tf.reduce_sum(tf.square(l3), axis=2, keep_dims=True) + epsilon)
+        self.pred_label = tf.squeeze(self.pred_label, axis=2)
+
         # masking layer: returns [batch_size, 10, 16]
         l4 = self.masking_layer(l3, self.inputs_y)
 
         # reconstruction layer: returns [batch_size, 784]
-        l5 = self.reconstruction_layer(l4)
+        self.l5 = self.reconstruction_layer(l4)
 
         # loss
-        self.margin_loss, self.recon_loss, self.total_loss = self.model_loss(l3, self.inputs_y, l5, self.inputs_x)
+        self.margin_loss, self.recon_loss, self.total_loss = self.model_loss(self.pred_label, self.inputs_y,
+                                                                             self.l5, self.inputs_x)
 
         # optimizer
         self.train_opt = self.model_opt(self.total_loss)
+
+        # accuracy computation
+        correct_prediction = tf.equal(tf.argmax(self.pred_label, 1), tf.argmax(self.inputs_y, 1))
+        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
         return
 
-    def model_loss(self, digit_caps_out, true_label, recon_out, true_inputs):
-        # compute length of the digit caps layer
-        epsilon = 1e-9
-        pred_label = tf.sqrt(tf.reduce_sum(tf.square(digit_caps_out), axis=2, keep_dims=True) + epsilon)
-        pred_label = tf.squeeze(pred_label, axis=2)
-
+    def model_loss(self, pred_label, true_label, recon_out, true_inputs):
         # compute margin loss
         maximum_l = tf.square(tf.maximum(0., self.m_plus - pred_label))
         maximum_r = tf.square(tf.maximum(0., pred_label - self.m_minus))
@@ -181,7 +187,8 @@ class CapsNet(object):
                     # c_ij: [batch_size, 1152, 10, 1, 1]
                     c_ij = tf.nn.softmax(b_ij, dim=2)
 
-                    # s_j: [batch_size, 1152, 10, 1, 16] => [batch_size, 1, 10, 1, 16]
+                    # sum(s_j x u_hat):
+                    # sum([batch_size, 1152, 10, 1, 16] x [batch_size, 1152, 10, 1, 16]) => [batch_size, 1, 10, 1, 16]
                     s_j = tf.reduce_sum(tf.multiply(c_ij, u_hat), axis=1, keep_dims=True)
 
                     # squash
@@ -189,11 +196,13 @@ class CapsNet(object):
                     v_j = squash(s_j, norm_axis=2)
 
                     # update b_ij
-                    # u_hat x v_j: [batch_size, 1152, 10, 1, 16]
+                    # u_hat x v_j:
+                    # [batch_size, 1152, 10, 1, 16] x [batch_size, 1, 10, 1, 16] => [batch_size, 1152, 10, 1, 16]
+                    # sum(u_hat x v_j): [batch_size, 1152, 10, 1, 1]
                     # b_ij: [batch_size, 1152, 10, 1, 1]
-                    b_ij = tf.reduce_sum(tf.multiply(u_hat, v_j), axis=4, keep_dims=True)
+                    b_ij += tf.reduce_sum(tf.multiply(u_hat, v_j), axis=4, keep_dims=True)
 
-        # reduce dimension
+        # reduce dimension: [batch_size, 1, 10, 1, 16] => [batch_size, 10, 16]
         v_j = tf.squeeze(v_j, axis=3)
         v_j = tf.squeeze(v_j, axis=1)
         return v_j
@@ -274,9 +283,102 @@ def train(net, epochs, batch_size, print_every=50):
 
                 steps += 1
 
+            # validation
+            acc = validate_accruacy(mnist, net)
+            print("Epoch {}/{}... Accuracy: {:.03f}".format(e + 1, epochs, acc))
+
+            # get reconstructed results
+            recon_result_fn = 'recon_{:03d}.png'.format(e+1)
+            validate_reconstruction(mnist, net, recon_result_fn)
+
     end_time = time.time()
     elapsed_time = end_time - start_time
     print('Elapsed: {:05.03f} s'.format(elapsed_time))
+
+    return
+
+
+def validate_accruacy(mnist, net):
+    # get test data
+    test_x = mnist.test.images
+    test_y = mnist.test.labels
+
+    # reshape input
+    test_x = np.reshape(test_x, (-1, 28, 28, 1))
+
+    n_test_case = test_x.shape[0]
+    batch_size = 100
+    n_test = n_test_case // batch_size
+
+    acc_sum = 0.0
+    for i in range(n_test):
+        start = i * batch_size
+        end = start + batch_size
+        batch_x = test_x[start:end]
+        batch_y = test_y[start:end]
+        acc = net.accuracy.eval(feed_dict={net.inputs_x: batch_x, net.inputs_y: batch_y})
+        acc_sum += acc
+
+    acc_ = acc_sum / float(n_test)
+    return acc_
+
+
+def form_image(multiple_images, val_block_size):
+    def preprocess(img):
+        img = ((img + 1.0) * 127.5).astype(np.uint8)
+        return img
+
+    preprocesed = preprocess(multiple_images)
+    final_image = np.array([])
+    single_row = np.array([])
+    for b in range(multiple_images.shape[0]):
+        # concat image into a row
+        if single_row.size == 0:
+            single_row = preprocesed[b, :, :, :]
+        else:
+            single_row = np.concatenate((single_row, preprocesed[b, :, :, :]), axis=1)
+
+        # concat image row to final_image
+        if (b+1) % val_block_size == 0:
+            if final_image.size == 0:
+                final_image = single_row
+            else:
+                final_image = np.concatenate((final_image, single_row), axis=0)
+
+            # reset single row
+            single_row = np.array([])
+
+    if final_image.shape[2] == 1:
+        final_image = np.squeeze(final_image, axis=2)
+
+    return final_image
+
+
+def validate_reconstruction(mnist, net, fn):
+    from scipy.misc import toimage
+
+    # get test data
+    test_x = mnist.test.images
+    test_y = mnist.test.labels
+
+    # reshape input
+    test_x = np.reshape(test_x, (-1, 28, 28, 1))
+
+    n_test_case_block = 5
+    n_test_case = n_test_case_block * n_test_case_block
+
+    picked_index = np.random.randint(0, test_x.shape[0], n_test_case)
+    selected_x = test_x[picked_index]
+    selected_y = test_y[picked_index]
+
+    recon = net.l5.eval(feed_dict={net.inputs_x: selected_x, net.inputs_y: selected_y})
+    recon = np.reshape(recon, (-1, 28, 28, 1))
+
+    real_image = form_image(selected_x, n_test_case_block)
+    recon_image = form_image(recon, n_test_case_block)
+
+    merged = np.concatenate((real_image, recon_image), axis=1)
+    toimage(merged, mode='L').save(fn)
 
     return
 
