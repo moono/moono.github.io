@@ -28,6 +28,7 @@ class CapsNet(object):
         self.m_plus = 0.9
         self.m_minus = 1.0 - self.m_plus
         self.lmbd = 0.5
+        self.reconstruction_scaler = 0.0005
         self.learning_rate = 0.001
 
         # we are handling MNIST dataset
@@ -49,10 +50,11 @@ class CapsNet(object):
         # digit caps layer: returns [batch_size, 10, 16]
         l3 = self.digit_caps_layer(l2, n_dim=16, n_classes=self.y_dim, n_routing=n_routing)
 
-        # compute length of the digit caps layer
+        # compute length of the digit caps layer output(instantiation vector)
+        # to represent probability that a capsule's entity(here, digit) exists
         epsilon = 1e-9
-        self.pred_label = tf.sqrt(tf.reduce_sum(tf.square(l3), axis=2, keep_dims=True) + epsilon)
-        self.pred_label = tf.squeeze(self.pred_label, axis=2)
+        self.iv_length = tf.sqrt(tf.reduce_sum(tf.square(l3), axis=2) + epsilon)
+        self.softmax_iv = tf.nn.softmax(self.iv_length)
 
         # masking layer: returns [batch_size, 10, 16]
         l4 = self.masking_layer(l3, self.inputs_y)
@@ -61,22 +63,17 @@ class CapsNet(object):
         self.l5 = self.reconstruction_layer(l4)
 
         # loss
-        self.margin_loss, self.recon_loss, self.total_loss = self.model_loss(self.pred_label, self.inputs_y,
+        self.margin_loss, self.recon_loss, self.total_loss = self.model_loss(self.iv_length, self.inputs_y,
                                                                              self.l5, self.inputs_x)
 
         # optimizer
         self.train_opt = self.model_opt(self.total_loss)
-
-        # accuracy computation
-        correct_prediction = tf.equal(tf.argmax(self.pred_label, 1), tf.argmax(self.inputs_y, 1))
-        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
         return
 
-    def model_loss(self, pred_label, true_label, recon_out, true_inputs):
+    def model_loss(self, iv_length, true_label, recon_out, true_inputs):
         # compute margin loss
-        maximum_l = tf.square(tf.maximum(0., self.m_plus - pred_label))
-        maximum_r = tf.square(tf.maximum(0., pred_label - self.m_minus))
+        maximum_l = tf.square(tf.maximum(0., self.m_plus - iv_length))
+        maximum_r = tf.square(tf.maximum(0., iv_length - self.m_minus))
         maximum = true_label * maximum_l + self.lmbd * (1.0 - true_label) * maximum_r
         margin_loss = tf.reduce_mean(tf.reduce_sum(maximum, axis=1))
 
@@ -85,7 +82,7 @@ class CapsNet(object):
         reconstruction_loss = tf.reduce_sum(tf.square(recon_out - reshaped))
 
         # total loss
-        total_loss = margin_loss + reconstruction_loss
+        total_loss = margin_loss + self.reconstruction_scaler * reconstruction_loss
 
         return margin_loss, reconstruction_loss, total_loss
 
@@ -241,10 +238,11 @@ def train(net, epochs, batch_size, print_every=50):
     mnist_dir = 'mnist'
     mnist = input_data.read_data_sets(mnist_dir, one_hot=True)
 
-    # val_block_size = 10
-    # val_size = val_block_size * val_block_size
     steps = 0
-    losses = []
+    margin_losses = []
+    recontruction_losses = []
+    total_losses = []
+    accuracies = []
 
     start_time = time.time()
 
@@ -269,23 +267,26 @@ def train(net, epochs, batch_size, print_every=50):
                 # Run optimizers
                 _ = sess.run(net.train_opt, feed_dict=fd)
 
-                # print losses
+                # evaluate losses
                 if steps % print_every == 0:
                     margin_loss = net.margin_loss.eval(fd)
                     recon_loss = net.recon_loss.eval(fd)
                     total_loss = net.total_loss.eval(fd)
 
+                    # compute current accuracy
+                    accuracy = validate_accruacy(sess, mnist, net)
                     print("Epoch {}/{}...".format(e + 1, epochs),
                           "Margin Loss: {:.4f}...".format(margin_loss),
                           "Reconstruction Loss: {:.4f}...".format(recon_loss),
-                          "Total Loss: {:.4f}...".format(total_loss))
-                    losses.append((margin_loss, recon_loss, total_loss))
+                          "Total Loss: {:.4f}...".format(total_loss),
+                          "Epoch {}/{}... Accuracy: {:.05f}".format(e + 1, epochs, accuracy))
 
+                    # save losses & accuracies
+                    margin_losses.append(margin_loss)
+                    recontruction_losses.append(recon_loss)
+                    total_losses.append(total_loss)
+                    accuracies.append(accuracy)
                 steps += 1
-
-            # validation
-            acc = validate_accruacy(mnist, net)
-            print("Epoch {}/{}... Accuracy: {:.03f}".format(e + 1, epochs, acc))
 
             # get reconstructed results
             recon_result_fn = 'recon_{:03d}.png'.format(e+1)
@@ -295,10 +296,34 @@ def train(net, epochs, batch_size, print_every=50):
     elapsed_time = end_time - start_time
     print('Elapsed: {:05.03f} s'.format(elapsed_time))
 
+    # save losses as image
+    margin_losses_fn = 'margin-loss.png'
+    recon_losses_fn = 'reconstruction-loss.png'
+    total_losses_fn = 'total-loss.png'
+    save_loss(margin_losses, 'Margin-loss', margin_losses_fn)
+    save_loss(recontruction_losses, 'Reconstruction-loss', recon_losses_fn)
+    save_loss(total_losses, 'Total-loss', total_losses_fn)
+
     return
 
 
-def validate_accruacy(mnist, net):
+# save losses
+def save_loss(loss, label, fn):
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots()
+    plt.plot(loss, alpha=0.5)
+    plt.legend(loc='upper right', bbox_to_anchor=(0.5, 0.5))
+    plt.title(label)
+    plt.legend()
+    plt.savefig(fn)
+    plt.close(fig)
+    return
+
+def validate_accruacy(sess, mnist, net):
+    # accuracy computation
+    correct_prediction = tf.equal(tf.argmax(net.softmax_iv, 1), tf.argmax(net.inputs_y, 1))
+    correct_prediction_count = tf.reduce_sum(tf.cast(correct_prediction, tf.float32))
+
     # get test data
     test_x = mnist.test.images
     test_y = mnist.test.labels
@@ -310,22 +335,22 @@ def validate_accruacy(mnist, net):
     batch_size = 100
     n_test = n_test_case // batch_size
 
-    acc_sum = 0.0
+    cnt_sum = 0.0
     for i in range(n_test):
         start = i * batch_size
         end = start + batch_size
         batch_x = test_x[start:end]
         batch_y = test_y[start:end]
-        acc = net.accuracy.eval(feed_dict={net.inputs_x: batch_x, net.inputs_y: batch_y})
-        acc_sum += acc
+        batch_cnt = sess.run(correct_prediction_count, feed_dict={net.inputs_x: batch_x, net.inputs_y: batch_y})
+        cnt_sum += batch_cnt
 
-    acc_ = acc_sum / float(n_test)
-    return acc_
+    accuracy = cnt_sum / float(n_test_case)
+    return accuracy
 
 
 def form_image(multiple_images, val_block_size):
     def preprocess(img):
-        img = ((img + 1.0) * 127.5).astype(np.uint8)
+        img = (img * 255.0).astype(np.uint8)
         return img
 
     preprocesed = preprocess(multiple_images)
