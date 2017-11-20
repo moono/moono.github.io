@@ -300,9 +300,11 @@ def train(net, epochs, batch_size, print_every=50):
     margin_losses_fn = 'margin-loss.png'
     recon_losses_fn = 'reconstruction-loss.png'
     total_losses_fn = 'total-loss.png'
+    accuracy_fn = 'accuracy.png'
     save_loss(margin_losses, 'Margin-loss', margin_losses_fn)
     save_loss(recontruction_losses, 'Reconstruction-loss', recon_losses_fn)
     save_loss(total_losses, 'Total-loss', total_losses_fn)
+    save_loss(accuracies, 'Accuracy', accuracy_fn)
 
     return
 
