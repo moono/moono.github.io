@@ -6,18 +6,10 @@ from tensorflow.examples.tutorials.mnist import input_data
 
 
 '''
-tf.layers.conv2d()'s default parameters
-kernel_initializer: glorot_uniform_initializer ==> Xavier uniform initializer
+tf.matmul(): matrix multiplication
+tf.multiply(): element wise x * y
+tf.layers.xxx()'s default kernel_initializer: glorot_uniform_initializer ==> Xavier uniform initializer
 '''
-
-
-def squash(sj, norm_axis):
-    epsilon = 1e-9
-    sj_squared_norm = tf.reduce_sum(tf.square(sj), axis=norm_axis, keep_dims=True)
-    scale = sj_squared_norm / (1.0 + sj_squared_norm) / tf.sqrt(sj_squared_norm + epsilon)
-    vj = scale * sj
-    return vj
-
 
 class CapsNet(object):
     def __init__(self):
@@ -42,29 +34,31 @@ class CapsNet(object):
         n_routing = 3
 
         # first convolution layer: returns [batch_size, 20, 20, 256]
-        l1 = self.conv_layer(self.inputs_x, n_filter=256, n_k=n_k)
+        relu_conv1_out = self.conv_layer(self.inputs_x, n_filter=256, n_k=n_k)
 
         # primary caps layer: returns [batch_size, 1152, 8]
-        l2 = self.primary_caps_layer(l1, n_dim=8, n_channel=32, n_k=n_k)
+        primary_caps_out = self.primary_caps_layer(relu_conv1_out, n_dim=8, n_channel=32, n_k=n_k)
 
         # digit caps layer: returns [batch_size, 10, 16]
-        l3 = self.digit_caps_layer(l2, n_dim=16, n_classes=self.y_dim, n_routing=n_routing)
+        digit_caps_out = self.digit_caps_layer(primary_caps_out, n_dim=16, n_classes=self.y_dim, n_routing=n_routing)
 
         # compute length of the digit caps layer output(instantiation vector)
         # to represent probability that a capsule's entity(here, digit) exists
         epsilon = 1e-9
-        self.iv_length = tf.sqrt(tf.reduce_sum(tf.square(l3), axis=2) + epsilon)
+        self.iv_length = tf.sqrt(tf.reduce_sum(tf.square(digit_caps_out), axis=2) + epsilon)
+
+        # softmax the iv_length for finding network's final output(0~9 digit selection)
         self.softmax_iv = tf.nn.softmax(self.iv_length)
 
         # masking layer: returns [batch_size, 10, 16]
-        l4 = self.masking_layer(l3, self.inputs_y)
+        masked = self.masking_layer(digit_caps_out, self.inputs_y)
 
         # reconstruction layer: returns [batch_size, 784]
-        self.l5 = self.reconstruction_layer(l4)
+        self.reconstructed = self.reconstruction_layer(masked)
 
         # loss
         self.margin_loss, self.recon_loss, self.total_loss = self.model_loss(self.iv_length, self.inputs_y,
-                                                                             self.l5, self.inputs_x)
+                                                                             self.reconstructed, self.inputs_x)
 
         # optimizer
         self.train_opt = self.model_opt(self.total_loss)
@@ -95,7 +89,19 @@ class CapsNet(object):
         return train_opt
 
     @staticmethod
-    def conv_layer(inputs, n_filter, n_k):
+    def squash(sj, norm_axis):
+        """
+        :param sj: vector to squash
+        :param norm_axis: axis for squared norm calculation
+        :return: squashed vector same size & dimension as input sj
+        """
+        epsilon = 1e-9
+        sj_squared_norm = tf.reduce_sum(tf.square(sj), axis=norm_axis, keep_dims=True)
+        scale = sj_squared_norm / (1.0 + sj_squared_norm) / tf.sqrt(sj_squared_norm + epsilon)
+        vj = scale * sj
+        return vj
+
+    def conv_layer(self, inputs, n_filter, n_k):
         """
         :param inputs: [batch_size, 28, 28, 1]
         :param n_filter: 256
@@ -108,8 +114,7 @@ class CapsNet(object):
             layer = tf.nn.relu(layer)
         return layer
 
-    @staticmethod
-    def primary_caps_layer(inputs, n_dim, n_channel, n_k):
+    def primary_caps_layer(self, inputs, n_dim, n_channel, n_k):
         """
         :param inputs: [batch_size, 20, 20, 256]
         :param n_dim: 8
@@ -126,11 +131,10 @@ class CapsNet(object):
             # [batch_size, 6, 6, 256] => [batch_size, 6 * 6 * 32, 8] => [batch_size, 1152, 8]
             # there are 1152 (6 * 6 * 32) capsules (8-D)
             layer = tf.reshape(layer, shape=[-1, l_shape[1] * l_shape[2] * n_channel, n_dim])
-            layer = squash(layer, norm_axis=2)
+            layer = self.squash(layer, norm_axis=2)
         return layer
 
-    @staticmethod
-    def digit_caps_layer(inputs, n_dim, n_classes, n_routing):
+    def digit_caps_layer(self, inputs, n_dim, n_classes, n_routing):
         """
         :param inputs: [batch_size, 1152, 8]
         :param n_dim: 16
@@ -171,7 +175,7 @@ class CapsNet(object):
 
                 # compute u_hat
                 # tf.matmul() will do matrix multiplication on last two dimension
-                # last 2 dims: [1, 8] x [8, 16] => [1, 16]
+                # last 2 dims: [1, 8] * [8, 16] => [1, 16]
                 # final output u_hat: [batch_size, 1152, 10, 1, 16]
                 u_hat = tf.matmul(inputs_reshaped_tiled, w_tiled)
 
@@ -185,12 +189,12 @@ class CapsNet(object):
                     c_ij = tf.nn.softmax(b_ij, dim=2)
 
                     # sum(s_j x u_hat):
-                    # sum([batch_size, 1152, 10, 1, 16] x [batch_size, 1152, 10, 1, 16]) => [batch_size, 1, 10, 1, 16]
+                    # sum([batch_size, 1152, 10, 1, 1] x [batch_size, 1152, 10, 1, 16]) => [batch_size, 1, 10, 1, 16]
                     s_j = tf.reduce_sum(tf.multiply(c_ij, u_hat), axis=1, keep_dims=True)
 
                     # squash
                     # v_j: [batch_size, 1, 10, 1, 16]
-                    v_j = squash(s_j, norm_axis=2)
+                    v_j = self.squash(s_j, norm_axis=2)
 
                     # update b_ij
                     # u_hat x v_j:
@@ -204,8 +208,7 @@ class CapsNet(object):
         v_j = tf.squeeze(v_j, axis=1)
         return v_j
 
-    @staticmethod
-    def masking_layer(inputs, class_label):
+    def masking_layer(self, inputs, class_label):
         """
         :param inputs: [batch_size, 10, 16]
         :param class_label: [batch_size, 10]
@@ -217,8 +220,7 @@ class CapsNet(object):
 
         return masked
 
-    @staticmethod
-    def reconstruction_layer(inputs):
+    def reconstruction_layer(self, inputs):
         """
         :param inputs: [batch_size, 10, 16]
         :return: [batch_size, 784]
@@ -398,7 +400,7 @@ def validate_reconstruction(mnist, net, fn):
     selected_x = test_x[picked_index]
     selected_y = test_y[picked_index]
 
-    recon = net.l5.eval(feed_dict={net.inputs_x: selected_x, net.inputs_y: selected_y})
+    recon = net.reconstructed.eval(feed_dict={net.inputs_x: selected_x, net.inputs_y: selected_y})
     recon = np.reshape(recon, (-1, 28, 28, 1))
 
     real_image = form_image(selected_x, n_test_case_block)
