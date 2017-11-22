@@ -1,9 +1,9 @@
-import os
 import time
 import tensorflow as tf
 import numpy as np
 from tensorflow.examples.tutorials.mnist import input_data
 
+import utils
 
 '''
 tf.matmul(): matrix multiplication
@@ -303,25 +303,13 @@ def train(net, epochs, batch_size, print_every=50):
     recon_losses_fn = 'reconstruction-loss.png'
     total_losses_fn = 'total-loss.png'
     accuracy_fn = 'accuracy.png'
-    save_loss(margin_losses, 'Margin-loss', margin_losses_fn)
-    save_loss(recontruction_losses, 'Reconstruction-loss', recon_losses_fn)
-    save_loss(total_losses, 'Total-loss', total_losses_fn)
-    save_loss(accuracies, 'Accuracy', accuracy_fn)
+    utils.save_loss(margin_losses, 'Margin-loss', margin_losses_fn)
+    utils.save_loss(recontruction_losses, 'Reconstruction-loss', recon_losses_fn)
+    utils.save_loss(total_losses, 'Total-loss', total_losses_fn)
+    utils.save_loss(accuracies, 'Accuracy', accuracy_fn)
 
     return
 
-
-# save losses
-def save_loss(loss, label, fn):
-    import matplotlib.pyplot as plt
-    fig, ax = plt.subplots()
-    plt.plot(loss, alpha=0.5)
-    plt.legend(loc='upper right', bbox_to_anchor=(0.5, 0.5))
-    plt.title(label)
-    plt.legend()
-    plt.savefig(fn)
-    plt.close(fig)
-    return
 
 def validate_accruacy(sess, mnist, net):
     # accuracy computation
@@ -352,37 +340,6 @@ def validate_accruacy(sess, mnist, net):
     return accuracy
 
 
-def form_image(multiple_images, val_block_size):
-    def preprocess(img):
-        img = (img * 255.0).astype(np.uint8)
-        return img
-
-    preprocesed = preprocess(multiple_images)
-    final_image = np.array([])
-    single_row = np.array([])
-    for b in range(multiple_images.shape[0]):
-        # concat image into a row
-        if single_row.size == 0:
-            single_row = preprocesed[b, :, :, :]
-        else:
-            single_row = np.concatenate((single_row, preprocesed[b, :, :, :]), axis=1)
-
-        # concat image row to final_image
-        if (b+1) % val_block_size == 0:
-            if final_image.size == 0:
-                final_image = single_row
-            else:
-                final_image = np.concatenate((final_image, single_row), axis=0)
-
-            # reset single row
-            single_row = np.array([])
-
-    if final_image.shape[2] == 1:
-        final_image = np.squeeze(final_image, axis=2)
-
-    return final_image
-
-
 def validate_reconstruction(mnist, net, fn):
     from scipy.misc import toimage
 
@@ -403,8 +360,8 @@ def validate_reconstruction(mnist, net, fn):
     recon = net.reconstructed.eval(feed_dict={net.inputs_x: selected_x, net.inputs_y: selected_y})
     recon = np.reshape(recon, (-1, 28, 28, 1))
 
-    real_image = form_image(selected_x, n_test_case_block)
-    recon_image = form_image(recon, n_test_case_block)
+    real_image = utils.form_image(selected_x, n_test_case_block)
+    recon_image = utils.form_image(recon, n_test_case_block)
 
     merged = np.concatenate((real_image, recon_image), axis=1)
     toimage(merged, mode='L').save(fn)
