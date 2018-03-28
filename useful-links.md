@@ -10,7 +10,7 @@
 * [Use pretrained famous models via slim](https://stackoverflow.com/questions/40054067/looking-for-resnet-implementation-in-tensorflow)
 
 ## Docker
-* 
+* [Add opencv install to Dockerfile](https://github.com/fbcotter/docker-tensorflow-opencv)
 
 ## Python
 * [Measure time](https://stackoverflow.com/questions/7370801/measure-time-elapsed-in-python)
