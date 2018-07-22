@@ -1,5 +1,11 @@
 # Docker related useful links
 
+## Find specific string in the logs of an docker container
+* ref: https://github.com/moby/moby/issues/9508
+```bash
+$ docker log <container_id_or_name> 2>&1 | grep <word_to_find>
+```
+
 ## Using docker with smb (cifs) share
 * Test share folder in local first
 ```bash
