@@ -6,6 +6,17 @@
 $ docker log <container_id_or_name> 2>&1 | grep <word_to_find>
 ```
 
+## run docker container with specific user name & group
+* ref: https://medium.com/@mccode/understanding-how-uid-and-gid-work-in-docker-containers-c37a01d01cf
+```bash
+# check your user id & group id
+$ id
+# will output ... 
+# uid=1001(moono) gid=1001(moono) groups=1001(moono),27(sudo),999(docker)
+
+$ docker run --user=1001:1001 -it <image_name> /bin/bash
+```
+
 ## Using docker with smb (cifs) share
 * Test share folder in local first
 ```bash
