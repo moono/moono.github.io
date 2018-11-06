@@ -16,6 +16,6 @@
 ## Python
 * [Measure time](https://stackoverflow.com/questions/7370801/measure-time-elapsed-in-python)
 
-## illustraion, sketch, colorization
+## illustration, sketch, colorization
 * [Mastering sketch](http://hi.cs.waseda.ac.jp/~esimo/en/research/sketch_master/)
 * [animation line(sketch) related author - deep learning](https://github.com/hepesu)
