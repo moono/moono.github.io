@@ -62,6 +62,7 @@ root@abcdefg:/path/to/inside/container# ls -al
 ```
 
 ## Delete 'None' tag images
+* https://stackoverflow.com/questions/33913020/docker-remove-none-tag-images
 ```bash
 $ docker image prune
 ```
