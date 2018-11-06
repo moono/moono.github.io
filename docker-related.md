@@ -60,3 +60,8 @@ root@abcdefg:/path/to/inside/container# ls -al
 # ...
 # ...
 ```
+
+## Delete 'None' tag images
+```bash
+$ docker image prune
+```
